@@ -133,11 +133,12 @@ def main():
 
                         # Metric Logging
                         avg_step_loss = running_loss / args.grad_accum_steps
+                        unwrapped_model = accelerator.unwrap_model(model)
                         metrics_dict = compute_step_metrics(
                             loss=avg_step_loss,
                             probs=outputs["probs"],
                             targets=batch["labels"],
-                            model=model
+                            model=unwrapped_model
                         )
                         metrics_dict["train/learning_rate"] = scheduler.get_last_lr()[0]
                         metrics_dict["train/epoch"] = epoch + (global_step / total_steps)
