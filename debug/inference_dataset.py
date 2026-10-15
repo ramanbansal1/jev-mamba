@@ -51,6 +51,13 @@ def run_inference_on_dataset():
     raw_ds = load_dataset(args.dataset_name)
     dataset = raw_ds["train"] if "train" in raw_ds else raw_ds
 
+    # Print dataset structure for debugging
+    print(f"\nDataset structure:")
+    print(f"Columns: {dataset.column_names}")
+    if len(dataset) > 0:
+        print(f"First sample keys: {dataset[0].keys()}")
+        print(f"First sample (first 500 chars): {str(dataset[0])[:500]}")
+
     if args.max_samples:
         print(f"Limiting to {args.max_samples} samples")
         dataset = dataset.select(range(min(args.max_samples, len(dataset))))
