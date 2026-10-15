@@ -31,7 +31,7 @@ def profile_model_flops():
     ]}
     tokenizer.add_special_tokens(custom_tokens)
 
-    hf_model = MambaForCausalLM.from_pretrained(args.model_name, torch_dtype=torch.float16)
+    hf_model = MambaForCausalLM.from_pretrained(args.model_name, torch_dtype=torch.float32)
     hf_model.resize_token_embeddings(len(tokenizer))
     hf_model = hf_model.to(device)
 
