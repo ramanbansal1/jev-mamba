@@ -5,6 +5,9 @@
 # Add project root to PYTHONPATH
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
+# Set memory allocation configuration to reduce fragmentation
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 accelerate launch \
     --num_processes=2 \
     --num_machines=1 \
@@ -14,8 +17,8 @@ accelerate launch \
     --model_name state-spaces/mamba-130m-hf \
     --dataset_name SargeDev/jev-distill-corpus-v3 \
     --epochs 2 \
-    --micro_batch_size 2 \
-    --grad_accum_steps 64 \
+    --micro_batch_size 1 \
+    --grad_accum_steps 128 \
     --lr 3e-4 \
     --warmup_ratio 0.05 \
     --lora_r 16 \
