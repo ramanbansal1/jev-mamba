@@ -35,6 +35,7 @@ def main():
     # Initialize Accelerator for multi-GPU training
     accelerator = Accelerator(
         mixed_precision="fp16",
+        gradient_accumulation_steps=args.grad_accum_steps,
         device_placement=True
     )
 
@@ -113,7 +114,7 @@ def main():
             )
 
         for batch in train_loader:
-            with accelerator.accumulate(model, accumulation_steps=args.grad_accum_steps):
+            with accelerator.accumulate(model):
                 outputs = model(**batch)
                 loss = outputs["loss"]
 
