@@ -2,6 +2,9 @@
 # Launch script for single-GPU training
 # Usage: bash launch_single_gpu.sh
 
+# Add project root to PYTHONPATH
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+
 accelerate launch \
     --num_processes=1 \
     --mixed_precision=fp16 \

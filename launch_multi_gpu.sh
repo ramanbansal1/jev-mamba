@@ -2,6 +2,9 @@
 # Launch script for multi-GPU training on 2x T4 GPUs
 # Usage: bash launch_multi_gpu.sh
 
+# Add project root to PYTHONPATH
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+
 accelerate launch \
     --num_processes=2 \
     --num_machines=1 \
