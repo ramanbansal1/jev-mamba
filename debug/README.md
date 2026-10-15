@@ -25,40 +25,66 @@ python debug/profile_model.py --batch_size 1 --num_choices 4 --seq_len_q 512 --s
 pip install thop
 ```
 
-### 2. GPU Monitor (`monitor_gpu.py`)
-Real-time GPU utilization, memory, temperature, and power monitoring.
+### 2. Batch Size Benchmark (`benchmark_batch_size.py`) ⭐ NEW
+Tests different batch sizes to find the optimal configuration for maximum throughput.
+
+**Usage:**
+```bash
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+python debug/benchmark_batch_size.py --max_batch_size 16 --seq_len_q 512 --seq_len_c 32
+```
+
+**What it measures:**
+- Throughput for each batch size
+- Time per sample for each batch size
+- Memory usage for each batch size
+- Speedup and efficiency compared to batch size 1
+- **Recommended optimal batch size**
+
+**Why this is important:**
+- Your current training uses batch_size=1 which is likely too small
+- This tool helps you find the sweet spot between memory and performance
+- GPU has 14.56 GB but you're only using 0.54 GB - huge waste!
+
+### 3. Simple GPU Monitor (`simple_gpu_monitor.py`) ⭐ NEW
+Lightweight GPU monitor using nvidia-smi (no extra dependencies).
 
 **Usage:**
 ```bash
 # Run in a separate terminal while training is running
-python debug/monitor_gpu.py --interval 1.0
+python debug/simple_gpu_monitor.py --interval 1.0
 
 # Or run for a specific duration
-python debug/monitor_gpu.py --interval 0.5 --duration 300
+python debug/simple_gpu_monitor.py --interval 0.5 --duration 300
 ```
 
 **What it monitors:**
 - GPU utilization (%)
-- Memory usage (GB and %)
+- Memory usage (MB and %)
 - Temperature (°C)
 - Power consumption (W)
 - Clock speeds (GPU and memory)
-- Average statistics over last 60 samples
 - **Bottleneck detection** - warns if GPU utilization is low (<70%)
+
+**Advantages:**
+- No extra dependencies (uses nvidia-smi)
+- Works on any system with NVIDIA GPU
+- Simple and reliable
+
+### 4. Advanced GPU Monitor (`monitor_gpu.py`)
+Real-time GPU monitoring with pynvml (more detailed statistics).
+
+**Usage:**
+```bash
+python debug/monitor_gpu.py --interval 1.0
+```
 
 **Install dependencies:**
 ```bash
 pip install pynvml
 ```
 
-**Interpreting the output:**
-- If GPU utilization is consistently low (<70%), you have a bottleneck:
-  - **CPU bottleneck**: Data loading or preprocessing is too slow
-  - **I/O bottleneck**: Disk or network is too slow
-  - **Batch size too small**: Not enough work per GPU
-  - **Inefficient model**: Model implementation can be optimized
-
-### 3. Torch Profiler (`torch_profiler.py`)
+### 5. Torch Profiler (`torch_profiler.py`)
 Detailed profiling of the training pipeline using PyTorch's built-in profiler.
 
 **Usage:**
@@ -75,75 +101,87 @@ python debug/torch_profiler.py --profiler_steps 10 --warmup_steps 3 --output_dir
 - Memory usage per operation
 - FLOPs per operation
 
-**Output:**
-- `trace.json` - Chrome trace file (view in chrome://tracing)
-- `profiler_stacks.txt` - Stack traces for performance analysis
-- Console output with top operations by CUDA time
-
-**Viewing the trace:**
-1. Open Chrome browser
-2. Navigate to `chrome://tracing`
-3. Click "Load"
-4. Select `profiler_output/trace.json`
-
 ## Quick Start Guide
 
-### Step 1: Profile the model (calculate FLOPs and timing)
+### Step 1: Find optimal batch size ⭐ IMPORTANT
+Your current training is very slow because batch_size=1. First, find the optimal batch size:
+
+```bash
+python debug/benchmark_batch_size.py --max_batch_size 16
+```
+
+This will tell you:
+- Which batch size gives maximum throughput
+- How much memory each batch size uses
+- Expected speedup
+
+### Step 2: Update launch scripts with optimal batch size
+After finding the optimal batch size, update your launch scripts:
+- Update `--micro_batch_size` to the recommended value
+- Adjust `--grad_accum_steps` to maintain the same effective batch size
+
+Example: If optimal batch_size=4 and current grad_accum=128:
+```bash
+--micro_batch_size 4
+--grad_accum_steps 32  # (128 / 4)
+```
+
+### Step 3: Monitor GPU during training
+```bash
+# Terminal 1: Start training with new batch size
+bash launch_multi_gpu.sh
+
+# Terminal 2: Monitor GPU
+python debug/simple_gpu_monitor.py --interval 1.0
+```
+
+This will show you:
+- Real-time GPU utilization
+- Memory usage
+- Bottleneck warnings
+
+### Step 4: Profile model (optional)
 ```bash
 python debug/profile_model.py
 ```
 This will tell you:
 - How long each forward pass takes
 - Total FLOPs
-- Whether the model fits in memory
+- Time per GFLOP (efficiency)
 
-### Step 2: Monitor GPU during training
-```bash
-# Terminal 1: Start training
-bash launch_multi_gpu.sh
-
-# Terminal 2: Monitor GPU
-python debug/monitor_gpu.py --interval 1.0
-```
-This will show you:
-- Real-time GPU utilization
-- Memory usage
-- Bottleneck warnings
-
-### Step 3: Profile training pipeline (if needed)
-If GPU monitor shows low utilization, use the torch profiler to find the bottleneck:
+### Step 5: Profile training pipeline (if GPU utilization is still low)
+If GPU monitor shows low utilization after optimizing batch size:
 ```bash
 python debug/torch_profiler.py --profiler_steps 20 --warmup_steps 5
 ```
-Then examine the trace in Chrome to see which operations are slow.
 
 ## Common Issues and Solutions
 
 ### Issue: GPU utilization is low (<70%)
 **Possible causes:**
-1. **CPU bottleneck** - Data loading is too slow
-   - Solution: Increase `num_workers` in DataLoader
-   - Solution: Reduce preprocessing in dataset
-   - Solution: Use pinned memory (`pin_memory=True`)
+1. **Batch size too small** ⭐ MOST COMMON
+   - **Solution**: Use `benchmark_batch_size.py` to find optimal batch size
+   - Your current batch_size=1 is very inefficient
 
-2. **I/O bottleneck** - Disk/network is too slow
+2. **CPU bottleneck** - Data loading is too slow
+   - Solution: Increase `num_workers` in DataLoader (currently 2, try 4-8)
+   - Solution: Reduce preprocessing in dataset
+   - Solution: Use pinned memory (`pin_memory=True` - already enabled)
+
+3. **I/O bottleneck** - Disk/network is too slow
    - Solution: Cache dataset in memory
    - Solution: Use faster storage (SSD)
    - Solution: Stream data more efficiently
-
-3. **Batch size too small**
-   - Solution: Increase micro_batch_size (if memory allows)
-   - Solution: Reduce gradient accumulation steps proportionally
 
 4. **Communication overhead** (multi-GPU)
    - Solution: Increase batch size per GPU
    - Solution: Use gradient checkpointing
 
 ### Issue: Training is very slow
-**Check with profiler:**
-- Which operation takes the most time?
-- Is it data loading or model forward/backward?
-- Are there inefficient operations in the model?
+**Diagnosis steps:**
+1. Run `benchmark_batch_size.py` - is batch size optimal?
+2. Run `simple_gpu_monitor.py` - is GPU utilization high?
+3. If GPU utilization is low, run `torch_profiler.py` to find bottleneck
 
 ### Issue: Out of memory
 **Solutions:**
@@ -151,6 +189,37 @@ Then examine the trace in Chrome to see which operations are slow.
 - Reduce sequence lengths (max_q_len, max_c_len in data collator)
 - Use gradient checkpointing
 - Use a smaller model
+
+## Performance Optimization Checklist
+
+- [ ] Run `benchmark_batch_size.py` to find optimal batch size
+- [ ] Update launch scripts with optimal batch size
+- [ ] Monitor GPU with `simple_gpu_monitor.py` during training
+- [ ] If GPU utilization < 70%, check:
+  - [ ] Increase `num_workers` in DataLoader
+  - [ ] Check if data loading is the bottleneck (use torch_profiler)
+  - [ ] Consider caching dataset in memory
+- [ ] If GPU utilization > 85% but still slow:
+  - [ ] Profile with `torch_profiler.py` to find slow operations
+  - [ ] Check if model implementation can be optimized
+
+## Example Output Interpretation
+
+**From benchmark_batch_size.py:**
+```
+Batch  1: 1558.93ms/batch, 1558.93ms/sample,  0.64 samples/s, 0.54GB allocated
+Batch  2: 2100.45ms/batch, 1050.23ms/sample,  0.95 samples/s, 0.87GB allocated
+Batch  4: 2800.12ms/batch,  700.03ms/sample,  1.43 samples/s, 1.45GB allocated
+Batch  8: 4200.34ms/batch,  525.04ms/sample,  1.90 samples/s, 2.89GB allocated
+
+Best throughput: batch_size=8, 1.90 samples/s
+Expected speedup: 2.97x
+```
+
+This means:
+- Increasing from batch_size=1 to batch_size=8 gives ~3x speedup
+- Memory usage increases from 0.54GB to 2.89GB (still well under 14.56GB limit)
+- You should update your launch script to use batch_size=8
 
 ## Updating requirements.txt
 
@@ -160,4 +229,7 @@ thop>=0.1.1
 pynvml>=11.4.0
 ```
 
-Note: torch profiler is built into PyTorch, no extra installation needed.
+Note:
+- `simple_gpu_monitor.py` doesn't need any extra dependencies
+- torch profiler is built into PyTorch
+
