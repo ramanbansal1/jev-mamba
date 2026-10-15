@@ -121,14 +121,13 @@ def main():
                 accelerator.backward(loss)
                 running_loss += loss.item()
 
-                accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad(set_to_none=True)
-
-                # Only log metrics at the end of accumulation steps
+                # Only perform optimizer steps and clipping at the end of accumulation steps
                 if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad(set_to_none=True)
+
                     if accelerator.is_main_process:
                         global_step += 1
 
